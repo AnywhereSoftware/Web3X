@@ -1,0 +1,11 @@
+**/Objects
+**/AutoBackups
+**/B4A
+*.meta
+
+*.b4?
+*.b?l
+*.p*
+B4XMainPage.bas
+B4A/google-services.json
+B4i/Archive.zip
