@@ -38,6 +38,7 @@ Public Sub Initialize
 	KeysClass.InitializeStatic("org.web3j.crypto.Keys")
 End Sub
 
+'Creates a Web3 object which uses Infura as its provider.
 Public Sub BuildWeb3Infura (Link As String) As Web3X
 	Dim jo As JavaObject
 	jo.InitializeNewInstance("org.web3j.protocol.infura.InfuraHttpService", Array(Link))
@@ -46,72 +47,74 @@ Public Sub BuildWeb3Infura (Link As String) As Web3X
 	Return w
 End Sub
 
-Public Sub BigIntFromHex (Hex As String) As BigInteger
-	Dim jo As JavaObject
-	jo.InitializeNewInstance("java.math.BigInteger", Array(CleanHexPrefix(Hex), 16))
-	Return BigIntFromNative(jo)
-End Sub
-
-
+'Converts an array of bytes, previously exported from a BigInteger, to BigInteger.
 Public Sub BigIntFromBytes (Key() As Byte) As BigInteger
 	Dim Bi As BigInteger
 	Bi.Initialize2(Key)
 	Return Bi
 End Sub
 
+'Convert BigDecimal to native API.
 Public Sub BigDecToNative(bd As BigDecimal) As Object
 	If bd = Null Then Return Null
 	Return bd.As(JavaObject).GetField("bigd")
 End Sub
-
+'Converts from native API to BigDecimal.
 Public Sub BigDecFromNative(Native As Object) As BigDecimal
 	Dim bd As BigDecimal
 	bd.As(JavaObject).SetField("bigd", Native)
 	Return bd
 End Sub
-
+'Converts from native API to BigInteger.
 Public Sub BigIntFromNative(Native As JavaObject) As BigInteger
 	Dim Bi As BigInteger
 	Bi.As(JavaObject).SetField("bigi", Native)
 	Return Bi
 End Sub
-
+'Converts BigInteger to native API.
 Public Sub BigIntToNative(Bi As BigInteger) As Object
 	If Bi = Null Then Return Null
 	Return Bi.As(JavaObject).GetField("bigi")
 End Sub
 
+'Returns a new string without the '0x' prefix. Returns the same string if no prefix.
 Public Sub CleanHexPrefix(Hex As String) As String
 	If Hex.StartsWith("0x") Then Return Hex.SubString(2)
 	Return Hex
 End Sub
 
+'Create credentials based on private key.
 Public Sub CreateCredentialsFromPrivateKey (Key() As Byte) As W3Credentials
 	Dim credentials As JavaObject
 	credentials = credentials.InitializeStatic("org.web3j.crypto.Credentials").RunMethod("create", Array(BigIntFromBytes(Key).ToStringBase(16)))
 	Return CreateCredentials(credentials)
 End Sub
 
+'Creates a BigInteger with value measured in wei. FromUnit can be one of: wei, kwei, mwei, gwei, szabo, finner and ether.
 Public Sub BigIntFromUnit (Number As String, FromUnit As String) As BigInteger
 	Return BigDecFromUnit(Number, FromUnit).ToBigInteger
 End Sub
 
+'Creates a BigDecimal with value measured in wei. FromUnit can be one of: wei, kwei, mwei, gwei, szabo, finner and ether.
 Public Sub BigDecFromUnit (Number As String, FromUnit As String) As BigDecimal
 	Dim Convert As JavaObject
 	Convert.InitializeStatic("org.web3j.utils.Convert")
 	Return BigDecFromNative(Convert.RunMethod("toWei", Array(Number, GetNativeUnit(FromUnit))))
 End Sub
 
+'Converts a BigInteger to BigDecimal.
 Public Sub BigDecFromBigInt(BigInt As BigInteger) As BigDecimal
 	Dim bd As JavaObject
 	bd.InitializeNewInstance("java.math.BigDecimal", Array(BigIntToNative(BigInt)))
 	Return BigDecFromNative(bd)
 End Sub
 
+' (internal) Returns the native unit object.
 Public Sub GetNativeUnit(UnitName As String) As Object
 	Return Units.Get(UnitName.ToLowerCase)
 End Sub
 
+'Converts a value measured in wei to a different unit. ToUnit can be one of: wei, kwei, mwei, gwei, szabo, finner and ether.
 Public Sub ConvertFromWei (Number As String, ToUnit As String) As BigDecimal
 	Dim Convert As JavaObject
 	Convert.InitializeStatic("org.web3j.utils.Convert")
@@ -128,6 +131,8 @@ Private Sub CreateCredentials(Native As JavaObject) As W3Credentials
 	Return c
 End Sub
 
+'Asynchronously creates a new wallet file with random keys. Result.Value holds the full path to the wallet file.
+'Light - Weaker and faster encryption algorithm will be used to encrypt the wallet data.
 Public Sub GenerateNewWallet (Dir As String, Password As String, Light As Boolean) As ResumableSub
 	Dim wu As JavaObject
 	wu.InitializeStatic("org.web3j.crypto.WalletUtils")
@@ -137,6 +142,8 @@ Public Sub GenerateNewWallet (Dir As String, Password As String, Light As Boolea
 	Return CreateW3AsyncResult(Success, Path, LastException)
 End Sub
 
+'Asynchronously creates a new wallet file based on the provided private key. Result.Value holds the full path to the wallet file.
+'Light - Weaker and faster encryption algorithm will be used to encrypt the wallet data.
 Public Sub GenerateWalletWithPrivateKey (Dir As String, Password As String, PrivateKey() As Byte, Light As Boolean) As ResumableSub
 	Dim c As W3Credentials = CreateCredentialsFromPrivateKey(PrivateKey)
 	Dim wu As JavaObject
@@ -147,6 +154,7 @@ Public Sub GenerateWalletWithPrivateKey (Dir As String, Password As String, Priv
 	Return CreateW3AsyncResult(Success, Path, LastException)
 End Sub
 
+'Asynchronously loads an existing layout. Result.Value type is W3Credentials.
 Public Sub LoadWallet (Path As String, Password As String) As ResumableSub
 	Dim wu As JavaObject
 	wu.InitializeStatic("org.web3j.crypto.WalletUtils")
@@ -155,6 +163,7 @@ Public Sub LoadWallet (Path As String, Password As String) As ResumableSub
 	Return CreateW3AsyncResult(Success, IIf(Success, CreateCredentials(Credentials), Null), LastException)
 End Sub
 
+'Signs a message. Returns the signature bytes. Signature algorithm is explained here: https://web3js.readthedocs.io/en/v1.5.2/web3-eth-personal.html#sign
 Public Sub SignPrefixedMessage (Message() As Byte, Credentials As W3Credentials) As Byte()
 	Dim SignatureData As JavaObject = SignClass.RunMethod("signPrefixedMessage", Array(Message, Credentials.Native.RunMethod("getEcKeyPair", Null)))
 	Dim bb As B4XBytesBuilder
@@ -165,6 +174,8 @@ Public Sub SignPrefixedMessage (Message() As Byte, Credentials As W3Credentials)
 	Return bb.ToArray
 End Sub
 
+'Finds the public keys that could have been used to sign the message. Returns a list with zero or more addresses derived from the public keys.
+'This method can be used to verify the signature integrity.
 Public Sub ExtractAddressesFromSignature(Message() As Byte, Signature() As Byte) As List
 	Dim res As List
 	res.Initialize
@@ -185,7 +196,7 @@ Public Sub ExtractAddressesFromSignature(Message() As Byte, Signature() As Byte)
 	Next
 	Return res
 End Sub
-
+'Converts an address with any case to checksum case.
 Public Sub ConvertAddressToChecksumAddress (Address As String) As String
 	Return KeysClass.RunMethod("toChecksumAddress", Array(Address))
 End Sub
@@ -200,6 +211,7 @@ Private Sub RunAsync(Target As Object, Method As String, Params() As Object) As 
 	Return jme.RunMethod("runAsync", Array(Me, Target, Method, Params))
 End Sub
 
+'internal
 Public Sub CreateW3AsyncResult (Success As Boolean, Result As Object, Error As Exception) As W3AsyncResult
 	Dim t1 As W3AsyncResult
 	t1.Initialize
