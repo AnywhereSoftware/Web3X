@@ -228,7 +228,7 @@ import anywheresoftware.b4j.object.JavaObject;
 import java.util.concurrent.Callable;
 import java.util.ArrayList;
 import java.util.List;
-public Object runAsync(B4AClass instance, final Object target, String method, Object[] params) {
+public Object runAsync(final B4AClass instance, final Object target, final String method, final Object[] params) {
 	Object sender = new Object();
 	BA.runAsync(instance.getBA(), sender, "runasync_complete", new Object[] {false, null}, 
 		new Callable<Object[]>() {

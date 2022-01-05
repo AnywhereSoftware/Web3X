@@ -182,7 +182,7 @@ import java.io.IOException;
 import org.web3j.crypto.Credentials;
 import java.math.BigInteger;
 
-public Object sendRequest (B4AClass instance, Request request){
+public Object sendRequest (B4AClass instance, final Request request){
 	Object sender = new Object();
 	BA.runAsync(instance.getBA(), sender, "runasync_complete", new Object[] {false, null}, 
 		new Callable<Object[]>() {
