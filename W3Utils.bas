@@ -47,6 +47,18 @@ Public Sub BuildWeb3Infura (Link As String) As Web3X
 	Return w
 End Sub
 
+'Converts a hex string to BigInteger.
+Public Sub BigIntFromHex (Hex As String) As BigInteger
+	Dim jo As JavaObject
+	jo.InitializeNewInstance("java.math.BigInteger", Array(CleanHexPrefix(Hex), 16))
+	Return BigIntFromNative(jo)
+End Sub
+
+'Converts a BigInteger to hex string.
+Public Sub BigIntToHex (Bi As BigInteger) As String
+	Return Bi.ToStringBase(16)
+End Sub
+
 'Converts an array of bytes, previously exported from a BigInteger, to BigInteger.
 Public Sub BigIntFromBytes (Key() As Byte) As BigInteger
 	Dim Bi As BigInteger
