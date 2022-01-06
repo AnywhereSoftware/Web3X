@@ -204,7 +204,7 @@ Public Sub GetAddressFromPublicKey (PublicKey As BigInteger) As String
 	Return ConvertAddressToChecksumAddress(KeysClass.RunMethod("getAddress", Array(PublicKey.ToStringBase(16))))
 End Sub
 
-'Returns a list with the possible public keys (BigInteger) that were used to sign the message. The list size will be between 0 to 4.
+'Returns a list with the possible public keys (BigInteger) of the credentials used to sign. The list size will be between 0 to 2.
 Public Sub ExtractPublicKeysFromSignature(Message() As Byte, Signature() As Byte) As List
 	Dim res As List
 	res.Initialize
