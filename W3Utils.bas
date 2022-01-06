@@ -175,7 +175,7 @@ Public Sub LoadWallet (Path As String, Password As String) As ResumableSub
 	Return CreateW3AsyncResult(Success, IIf(Success, CreateCredentials(Credentials), Null), LastException)
 End Sub
 
-'Signs a message. Returns the signature bytes. Signature algorithm is explained here: https://web3js.readthedocs.io/en/v1.5.2/web3-eth-personal.html#sign
+'Signs a message. Returns the signature bytes. Signature algorithm is explained <link>here|https://web3js.readthedocs.io/en/v1.5.2/web3-eth-personal.html#sign</link>.
 Public Sub SignPrefixedMessage (Message() As Byte, Credentials As W3Credentials) As Byte()
 	Dim SignatureData As JavaObject = SignClass.RunMethod("signPrefixedMessage", Array(Message, Credentials.Native.RunMethod("getEcKeyPair", Null)))
 	Dim bb As B4XBytesBuilder
