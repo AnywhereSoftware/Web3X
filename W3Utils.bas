@@ -186,9 +186,26 @@ Public Sub SignPrefixedMessage (Message() As Byte, Credentials As W3Credentials)
 	Return bb.ToArray
 End Sub
 
-'Finds the public keys that could have been used to sign the message. Returns a list with zero or more addresses derived from the public keys.
-'This method can be used to verify the signature integrity.
-Public Sub ExtractAddressesFromSignature(Message() As Byte, Signature() As Byte) As List
+'Tests whether the message was signed with the given address.
+Public Sub VerifySignature(Message() As Byte, Signature() As Byte, Address As String) As Boolean
+	Dim keys As List = ExtractPublicKeysFromSignature(Message, Signature)
+	Dim res As List
+	res.Initialize
+	Dim Target As String = CleanHexPrefix(Address).ToLowerCase
+	For Each b As BigInteger In keys
+		Dim add As String = KeysClass.RunMethod("getAddress", Array(b.ToStringBase(16)))
+		If add.ToLowerCase = Target Then Return True
+	Next
+	Return False
+End Sub
+
+'Extracts the address from the public key.
+Public Sub GetAddressFromPublicKey (PublicKey As BigInteger) As String
+	Return ConvertAddressToChecksumAddress(KeysClass.RunMethod("getAddress", Array(PublicKey.ToStringBase(16))))
+End Sub
+
+'Returns a list with the possible public keys (BigInteger) that were used to sign the message. The list size will be between 0 to 4.
+Public Sub ExtractPublicKeysFromSignature(Message() As Byte, Signature() As Byte) As List
 	Dim res As List
 	res.Initialize
 	Dim r(32), s(32) As Byte
@@ -201,13 +218,14 @@ Public Sub ExtractAddressesFromSignature(Message() As Byte, Signature() As Byte)
 	ECDSASignature.InitializeNewInstance("org.web3j.crypto.ECDSASignature", Array(BigIntToNative(BigIntFromBytes(r)), BigIntToNative(BigIntFromBytes(s))))
 	Dim hash() As Byte = SignClass.RunMethod("getEthereumMessageHash", Array(Message))
 	For i = 0 To 3
-		Dim publickey As Object = SignClass.RunMethod("recoverFromSignature", Array(i, ECDSASignature, hash))
-		If publickey <> Null Then
-			res.Add(ConvertAddressToChecksumAddress(KeysClass.RunMethod("getAddress", Array(publickey))))
+		Dim publickey As JavaObject = SignClass.RunMethod("recoverFromSignature", Array(i, ECDSASignature, hash))
+		If publickey.IsInitialized Then
+			res.Add(BigIntFromNative(publickey))
 		End If
 	Next
 	Return res
 End Sub
+
 'Converts an address with any case to checksum case.
 Public Sub ConvertAddressToChecksumAddress (Address As String) As String
 	Return KeysClass.RunMethod("toChecksumAddress", Array(Address))
