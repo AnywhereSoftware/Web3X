@@ -14,6 +14,7 @@ Sub Class_Globals
 	Private NumericClass As JavaObject
 	Private HashClass As JavaObject
 	Private KeysClass As JavaObject
+	Public Const CHAINID_MAINNET = 1, CHAINID_ROPSTEN = 3, CHAINID_RINKEBY = 4, CHAINID_GOERLI = 5, CHAINID_KOTTI = 6 As Int
 End Sub
 
 Public Sub Initialize
@@ -105,6 +106,13 @@ End Sub
 'Creates a BigInteger with value measured in wei. FromUnit can be one of: wei, kwei, mwei, gwei, szabo, finner and ether.
 Public Sub BigIntFromUnit (Number As String, FromUnit As String) As BigInteger
 	Return BigDecFromUnit(Number, FromUnit).ToBigInteger
+End Sub
+
+'Creates a BigInteger from a Long typed number.
+Public Sub BigIntFromNumber (Number As Long) As BigInteger
+	Dim bi As BigInteger
+	bi.Initialize3(Number)
+	Return bi
 End Sub
 
 'Creates a BigDecimal with value measured in wei. FromUnit can be one of: wei, kwei, mwei, gwei, szabo, finner and ether.

@@ -25,10 +25,14 @@ Sub Class_Globals
 		RevertReason As String, _
 		EffectiveGasPrice As BigInteger, _
 		TransactionType As String, _
+		Pending As Boolean, _
 		Logs As List _
 		)
+	Type W3TransactionHash (Hash As String, Nonce As BigInteger)
 	Private TransactionManagers As Map
-
+	Private bc As ByteConverter
+	Private SendFundsLock As Boolean
+	Private PollingDuration As Int = 10000
 End Sub
 
 'Don't call!
@@ -50,7 +54,7 @@ Private Sub GetTransactionManager (Credentials As W3Credentials, ChainId As Long
 	joBA.InitializeStatic("anywheresoftware.b4a.BA")
 	Dim package As String = joBA.GetField("packageName")
 	Dim TransactionManager As JavaObject
-	TransactionManager.InitializeNewInstance(package & ".web3j$MyTransactionManager" , Array(w3, Credentials.Native))
+	TransactionManager.InitializeNewInstance(package & ".web3x$MyTransactionManager" , Array(w3, Credentials.Native))
 	TransactionManagers.Put(key, TransactionManager)
 	Return TransactionManager
 End Sub
@@ -59,6 +63,10 @@ End Sub
 Public Sub ResetNonce (Credentials As W3Credentials, ChainId As Long)
 	GetTransactionManager(Credentials, ChainId).As(JavaObject).RunMethod("setNonce", Array(mUtils.BigIntToNative(mUtils.BigIntFromUnit("-1", "wei"))))
 End Sub
+
+
+
+
 
 'Asynchronously returns the current block number. Result.Value type is BigInteger.
 Public Sub EthBlockNumber As ResumableSub
@@ -105,23 +113,123 @@ Private Sub BlockParameterToDefault(BlockParameter As Object) As Object
 	End If
 End Sub
 
-'Asynchronously sends funds. Based on EIP 1559. It can take up to 6 minutes for the transaction to complete, whether successfully or not. Result.Value type is W3TransactionReceipt.
+'Asynchronously sends funds. Based on EIP 1559. Result.Value type is W3TransactionHash.
 'ChainId - Chain id. Ethereum Mainnet id is 1.
 'Credentials - Paying account credentials.
 'ToAddress - Destination address.
 'Amount - Value transferred in wei. You can use utils.BigIntFromUnit.
 'MaxPriorityFeePerGas - The maximum fee per gas to give miners to incentivize them to include the transaction.
 'MaxFeePerGas - The maximum fee per gas that the transaction is willing to pay in total.
-Public Sub SendFunds(ChainId As Long, Credentials As W3Credentials, ToAddress As String, Amount As BigInteger, MaxPriorityFeePerGas As BigInteger, MaxFeePerGas As BigInteger) As ResumableSub
-	Dim sf As Object = RunAsync(GetTransactionManager(Credentials, ChainId), "executeTransactionEIP1559", Array(ChainId, _
-		mUtils.BigIntToNative(MaxPriorityFeePerGas), _
-		mUtils.BigIntToNative(MaxFeePerGas), _
-		mUtils.BigIntToNative(mUtils.BigIntFromUnit("21000", "wei")), _
-		ToAddress, _
-		"", _
-		mUtils.BigIntToNative(Amount)))
-	Wait For (sf) RunAsync_Complete (Success As Boolean, TransactionReceipt As Object)
-	Return mUtils.CreateW3AsyncResult(Success, IIf(Success, TransactionFromNative(TransactionReceipt), Null), LastException)
+Public Sub SendFunds (ChainId As Long, Credentials As W3Credentials, ToAddress As String, Amount As BigInteger, MaxPriorityFeePerGas As BigInteger, MaxFeePerGas As BigInteger) As ResumableSub
+	Do While SendFundsLock = True
+		Log("waiting")
+		Sleep(100)
+		
+	Loop
+	SendFundsLock = True
+	Dim res As W3AsyncResult
+	Try
+		Wait For (EthGetTransactionCount(Credentials.Address, mUtils.BLOCK_PENDING)) Complete (result As W3AsyncResult)
+		If result.Success = False Then
+			res = mUtils.CreateW3AsyncResult(False, Null, LastException)
+		Else
+			Dim nonce As BigInteger = result.Value
+			Wait For (SendFunds2(nonce, ChainId, Credentials, ToAddress, Amount, MaxPriorityFeePerGas, MaxFeePerGas)) Complete (result As W3AsyncResult)
+			res = result
+		End If
+	Catch
+		Log(LastException)
+		res = mUtils.CreateW3AsyncResult(False, Null, LastException)
+	End Try
+	SendFundsLock = False
+	Return res
+End Sub
+
+'Asynchronously sends funds. Based on EIP 1559. Result.Value type is W3TransactionHash.
+'Nonce - Transaction nonce. This can be used to replace a pending transaction, or when sending multiple transaction at once.
+'ChainId - Chain id. Ethereum Mainnet id is 1.
+'Credentials - Paying account credentials.
+'ToAddress - Destination address.
+'Amount - Value transferred in wei. You can use utils.BigIntFromUnit.
+'MaxPriorityFeePerGas - The maximum fee per gas to give miners to incentivize them to include the transaction.
+'MaxFeePerGas - The maximum fee per gas that the transaction is willing to pay in total.
+Public Sub SendFunds2 (Nonce As BigInteger, ChainId As Long, Credentials As W3Credentials, ToAddress As String, Amount As BigInteger, MaxPriorityFeePerGas As BigInteger, MaxFeePerGas As BigInteger) As ResumableSub
+	Dim Transaction As Object = CreateTransaction(ChainId, Nonce, ToAddress, Amount, MaxPriorityFeePerGas, MaxFeePerGas, _
+		mUtils.BigIntFromUnit("21000", "wei"), "")
+	Dim hex As String = SignTransaction(Transaction, ChainId, Credentials)
+	Wait For (EthSendRawTransaction(hex, Nonce)) Complete (Result As W3AsyncResult)
+	Return Result
+End Sub
+
+
+Private Sub CreateTransaction(ChainId As Long, Nonce As BigInteger, ToAddress As String, Amount As BigInteger, MaxPriorityFeePerGas As BigInteger, MaxFeePerGas As BigInteger, _
+		GasLimit As BigInteger, Data As String) As Object
+	Dim RawTransactionClass As JavaObject
+	RawTransactionClass.InitializeStatic("org.web3j.crypto.RawTransaction")
+	Return RawTransactionClass.RunMethod("createTransaction", Array(ChainId, mUtils.BigIntToNative(Nonce), _
+		 mUtils.BigIntToNative(GasLimit), ToAddress, mUtils.BigIntToNative(Amount), Data, mUtils.BigIntToNative(MaxPriorityFeePerGas), _
+		mUtils.BigIntToNative(MaxFeePerGas)))
+End Sub
+
+'Returns BigInteger
+Private Sub EthGetTransactionCount (Address As String, Block As Object) As ResumableSub
+	Dim sf As Object = SendRequest("ethGetTransactionCount", Array(Address, Block))
+	Wait For (sf)RunAsync_Complete (Success As Boolean, Count As Object)
+	Return mUtils.CreateW3AsyncResult(Success, IIf(Success, mUtils.BigIntFromNative(Count.As(JavaObject).RunMethod("getTransactionCount", Null)) _
+		, Null), LastException)
+End Sub
+
+'Returns hex string
+Private Sub SignTransaction(Transaction As Object, ChainId As Long, Credentials As W3Credentials) As String
+	Dim TransactionEncoder As JavaObject
+	TransactionEncoder.InitializeStatic("org.web3j.crypto.TransactionEncoder")
+	Return "0x" & bc.HexFromBytes(TransactionEncoder.RunMethod("signMessage", Array(Transaction, ChainId, Credentials.Native)))
+End Sub
+
+Private Sub EthSendRawTransaction(HexMessage As String, Nonce As BigInteger) As ResumableSub
+	Dim sf As Object = SendRequest("ethSendRawTransaction", Array(HexMessage))
+	Wait For (sf) RunAsync_Complete (Success As Boolean, EthSendTransaction As Object)
+	If Success Then
+		Dim th As W3TransactionHash
+		th.Initialize
+		Dim hash As Object = EthSendTransaction.As(JavaObject).RunMethod("getTransactionHash", Null)
+		If hash <> Null Then
+			th.Hash = hash
+			th.Nonce = Nonce
+			Return mUtils.CreateW3AsyncResult(True, th, Null)
+		Else
+			Log("Error sending transaction. Empty hash returned")
+		End If
+	End If
+	Return mUtils.CreateW3AsyncResult(False, Null, LastException)
+End Sub
+
+
+
+'Returns the transaction receipt. This method will poll the node until the receipt is available or the timeout reached. Value type is W3TransactionReceipt.
+'Make sure to check the Pending and StatusOk values.
+'TransactionHash - Transaction hash. Only the address is used. Nonce not important.
+'TimeoutMs - Polling timeout in seconds. Pass 0 for a single call. It can take several minutes (or more) for the transaction to complete.
+Public Sub EthGetTransactionReceipt (TransactionHash As W3TransactionHash, TimeoutSeconds As Long) As ResumableSub
+	Dim Start As Long = DateTime.Now + 10
+	Do While DateTime.Now < Start + TimeoutSeconds * 1000
+		Dim sf As Object = SendRequest("ethGetTransactionReceipt", Array(TransactionHash.Hash))
+		Wait For (sf)RunAsync_Complete (Success As Boolean, OptionalReceipt As Object)
+		If Success Then
+			Dim native As Object = OptionalReceipt.As(JavaObject).RunMethodJO("getTransactionReceipt", Null).RunMethod("orElse", Array(Null))
+			If native <> Null Then 
+				Dim receipt As W3TransactionReceipt = TransactionFromNative(native)
+				Return mUtils.CreateW3AsyncResult(True, receipt, Null)
+			End If
+		Else
+			Return mUtils.CreateW3AsyncResult(False, Null, LastException)
+		End If
+		Sleep(PollingDuration)
+	Loop
+	Dim res As W3TransactionReceipt
+	res.Initialize
+	res.Pending = True
+	Return mUtils.CreateW3AsyncResult(True, res, LastException)
 End Sub
 
 Private Sub TransactionFromNative(Trans As JavaObject) As W3TransactionReceipt
