@@ -6,7 +6,8 @@ Version=9.3
 @EndOfDesignText@
 Sub Class_Globals
 	Type W3Credentials (PrivateKey() As Byte, PublicKey As BigInteger, Address As String, Native As JavaObject)
-	Type W3AsyncResult (Success As Boolean, Value As Object, Error As Exception)
+	Type W3Error (Code As Int, Message As String, Data As String)
+	Type W3AsyncResult (Success As Boolean, Value As Object, Error As W3Error)
 	Private jme As JavaObject
 	Public BLOCK_EARLIEST, BLOCK_LATEST, BLOCK_PENDING As Object
 	Private Units As Map
@@ -43,6 +44,16 @@ End Sub
 Public Sub BuildWeb3Infura (Link As String) As Web3X
 	Dim jo As JavaObject
 	jo.InitializeNewInstance("org.web3j.protocol.infura.InfuraHttpService", Array(Link))
+	Return CreateWeb3X(jo)
+End Sub
+
+Public Sub BuildWeb3Http (Link As String) As Web3X
+	Dim jo As JavaObject
+	jo.InitializeNewInstance("org.web3j.protocol.http.HttpService", Array(Link))
+	Return CreateWeb3X(jo)
+End Sub
+
+Private Sub CreateWeb3X (jo As Object) As Web3X
 	Dim w As Web3X
 	w.Initialize(jo, Me)
 	Return w
@@ -80,6 +91,7 @@ Public Sub BigDecFromNative(Native As Object) As BigDecimal
 End Sub
 'Converts from native API to BigInteger.
 Public Sub BigIntFromNative(Native As JavaObject) As BigInteger
+	if Native = Null or Native.IsInitialized = False Then Return Null
 	Dim Bi As BigInteger
 	Bi.As(JavaObject).SetField("bigi", Native)
 	Return Bi
@@ -158,8 +170,8 @@ Public Sub GenerateNewWallet (Dir As String, Password As String, Light As Boolea
 	wu.InitializeStatic("org.web3j.crypto.WalletUtils")
 	Dim sf As Object = RunAsync(wu, "generateNewWalletFile", Array(Password, _
 		DirFileToFile(Dir, ""), Not(Light)))
-	Wait For (sf) RunAsync_Complete (Success As Boolean, Path As Object)
-	Return CreateW3AsyncResult(Success, Path, LastException)
+	Wait For (sf) RunAsync_Complete (Success As Boolean, Path As Object, Error As W3Error)
+	Return CreateW3AsyncResult(Success, Path, Error)
 End Sub
 
 'Asynchronously creates a new wallet file based on the provided private key. Result.Value holds the full path to the wallet file.
@@ -170,8 +182,8 @@ Public Sub GenerateWalletWithPrivateKey (Dir As String, Password As String, Priv
 	wu.InitializeStatic("org.web3j.crypto.WalletUtils")
 	Dim sf As Object = RunAsync(wu, "generateWalletFile", Array(Password, c.Native.RunMethod("getEcKeyPair", Null), _
 		DirFileToFile(Dir, ""), Not(Light)))
-	Wait For (sf) RunAsync_Complete (Success As Boolean, Path As Object)
-	Return CreateW3AsyncResult(Success, Path, LastException)
+	Wait For (sf) RunAsync_Complete (Success As Boolean, Path As Object, Error As W3Error)
+	Return CreateW3AsyncResult(Success, Path, Error)
 End Sub
 
 'Asynchronously loads an existing layout. Result.Value type is W3Credentials.
@@ -179,8 +191,8 @@ Public Sub LoadWallet (Path As String, Password As String) As ResumableSub
 	Dim wu As JavaObject
 	wu.InitializeStatic("org.web3j.crypto.WalletUtils")
 	Dim sf As Object = RunAsync(wu, "loadCredentials", Array(Password, Path))
-	Wait For (sf) RunAsync_Complete (Success As Boolean, Credentials As Object)
-	Return CreateW3AsyncResult(Success, IIf(Success, CreateCredentials(Credentials), Null), LastException)
+	Wait For (sf) RunAsync_Complete (Success As Boolean, Credentials As Object, Error As W3Error)
+	Return CreateW3AsyncResult(Success, IIf(Success, CreateCredentials(Credentials), Null), Error)
 End Sub
 
 'Signs a message. Returns the signature bytes. Signature algorithm is explained <link>here|https://web3js.readthedocs.io/en/v1.5.2/web3-eth-personal.html#sign</link>.
@@ -250,7 +262,7 @@ Private Sub RunAsync(Target As Object, Method As String, Params() As Object) As 
 End Sub
 
 'internal
-Public Sub CreateW3AsyncResult (Success As Boolean, Result As Object, Error As Exception) As W3AsyncResult
+Public Sub CreateW3AsyncResult (Success As Boolean, Result As Object, Error As W3Error) As W3AsyncResult
 	Dim t1 As W3AsyncResult
 	t1.Initialize
 	t1.Success = Success
@@ -268,15 +280,36 @@ import java.util.ArrayList;
 import java.util.List;
 public Object runAsync(final B4AClass instance, final Object target, final String method, final Object[] params) {
 	Object sender = new Object();
-	BA.runAsync(instance.getBA(), sender, "runasync_complete", new Object[] {false, null}, 
+	BA.runAsync(instance.getBA(), sender, "runasync_complete", null, 
 		new Callable<Object[]>() {
 			public Object[] call() throws Exception {
 				JavaObject jo = new JavaObject();
 				jo.setObject(target);
-				return new Object[] {true, jo.RunMethod(method, params)};
+				try {
+					return new Object[] {true, jo.RunMethod(method, params), null};
+				} catch (Exception e) {
+					return new Object[] {false, null, w3errorFromException(e)};
+				}
 			}
 		}
 	);
 	return sender;
 }
+public static _w3error w3errorFromException(Exception e) {
+	_w3error ee = new _w3error();
+	ee.IsInitialized = true;
+	ee.Code = -1;
+	ee.Data = "";
+	ee.Message = e.getMessage();
+	return ee;
+}
 #end if
+
+Public Sub CreateW3Error (Code As Int, Message As String, Data As String) As W3Error
+	Dim t1 As W3Error
+	t1.Initialize
+	t1.Code = Code
+	t1.Message = Message
+	t1.Data = Data
+	Return t1
+End Sub
