@@ -78,6 +78,12 @@ Public Sub BigIntFromBytes (Key() As Byte) As BigInteger
 	Return Bi
 End Sub
 
+Public Sub BigIntFromBytes2 (Signum As Int, Magnitude() As Byte) As BigInteger
+	Dim n As JavaObject
+	n.InitializeNewInstance("java.math.BigInteger", Array(Signum, Magnitude))
+	Return BigIntFromNative(n)
+End Sub
+
 'Convert BigDecimal to native API.
 Public Sub BigDecToNative(bd As BigDecimal) As Object
 	If bd = Null Then Return Null
@@ -91,7 +97,7 @@ Public Sub BigDecFromNative(Native As Object) As BigDecimal
 End Sub
 'Converts from native API to BigInteger.
 Public Sub BigIntFromNative(Native As JavaObject) As BigInteger
-	if Native = Null or Native.IsInitialized = False Then Return Null
+	If Native = Null Or Native.IsInitialized = False Then Return Null
 	Dim Bi As BigInteger
 	Bi.As(JavaObject).SetField("bigi", Native)
 	Return Bi
@@ -235,7 +241,7 @@ Public Sub ExtractPublicKeysFromSignature(Message() As Byte, Signature() As Byte
 	Dim SignatureData As JavaObject
 	SignatureData.InitializeNewInstance("org.web3j.crypto.Sign.SignatureData", Array(v, r, s))
 	Dim ECDSASignature As JavaObject
-	ECDSASignature.InitializeNewInstance("org.web3j.crypto.ECDSASignature", Array(BigIntToNative(BigIntFromBytes(r)), BigIntToNative(BigIntFromBytes(s))))
+	ECDSASignature.InitializeNewInstance("org.web3j.crypto.ECDSASignature", Array(BigIntToNative(BigIntFromBytes2(1, r)), BigIntToNative(BigIntFromBytes2(1, s))))
 	Dim hash() As Byte = SignClass.RunMethod("getEthereumMessageHash", Array(Message))
 	For i = 0 To 3
 		Dim publickey As JavaObject = SignClass.RunMethod("recoverFromSignature", Array(i, ECDSASignature, hash))
@@ -245,6 +251,8 @@ Public Sub ExtractPublicKeysFromSignature(Message() As Byte, Signature() As Byte
 	Next
 	Return res
 End Sub
+
+
 
 'Converts an address with any case to checksum case.
 Public Sub ConvertAddressToChecksumAddress (Address As String) As String
