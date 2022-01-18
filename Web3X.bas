@@ -28,6 +28,15 @@ Sub Class_Globals
 		Pending As Boolean, _
 		Logs As List _
 		)
+	Type W3Block ( _
+		Number As BigInteger, _
+		Timestamp As BigInteger, _
+		Transactions As List _
+	)
+		
+		
+		
+	Type W3Log (Topics As List, Data As String, Address As String, Removed As Boolean, LogIndex As BigInteger)
 	Type W3TransactionHash (Hash As String, Nonce As BigInteger)
 	Private TransactionManagers As Map
 	Private bc As ByteConverter
@@ -78,6 +87,23 @@ Public Sub EthGetBalance (Address As String, BlockParameter As Object) As Resuma
 	Wait For (sf) RunAsync_Complete (Success As Boolean, GetBalance As Object, Error As W3Error)
 	Return mUtils.CreateW3AsyncResult(Success, IIf(Success, mUtils.BigIntFromNative(GetBalance.As(JavaObject).RunMethod("getBalance", Null)), Null), Error)
 End Sub
+
+Public Sub EthGetBlockByNumber(BlockParameter As Object, ReturnFullTransactionObjects As Boolean) As ResumableSub
+	Dim sf As Object = SendRequest("ethGetBlockByNumber", Array(mUtils.DefaultBlockOrBigIntToDefaultBlock(BlockParameter), ReturnFullTransactionObjects))
+	Wait For (sf) RunAsync_Complete (Success As Boolean, EthBlock As Object, Error As W3Error)
+	Return mUtils.CreateW3AsyncResult(Success, IIf(Success, CreateEthBlockFromNative(EthBlock), Null), Error)
+End Sub
+
+Private Sub CreateEthBlockFromNative(native As JavaObject) As W3Block
+	Dim nativeblock As JavaObject = native.RunMethod("getBlock", Null)
+	Dim b As W3Block
+	b.Initialize
+	b.Number = mUtils.BigIntFromNative(nativeblock.RunMethod("getNumber", Null))
+	b.Timestamp = mUtils.BigIntFromNative(nativeblock.RunMethod("getTimestamp", Null))
+	b.Transactions = nativeblock.RunMethod("getTransactions", Null)
+	Return b
+End Sub
+
 
 'Asynchronously returns the current gas price. Result.Value type is BigInteger (wei units).
 Public Sub EthGetGasPrice As ResumableSub
@@ -240,7 +266,6 @@ Private Sub EthSendRawTransaction(HexMessage As String, Nonce As BigInteger) As 
 End Sub
 
 
-
 'Returns the transaction receipt. This method will poll the node until the receipt is available or the timeout reached. Value type is W3TransactionReceipt.
 'Make sure to check the Pending and StatusOk values.
 'TransactionHash - Transaction hash. Only the address is used. Nonce not important.
@@ -285,7 +310,7 @@ Private Sub TransactionFromNative(Trans As JavaObject) As W3TransactionReceipt
 '	tw.LogsBloom = Trans.RunMethod("getLogsBloom", Null)
 	tw.RevertReason = NullToEmptyString(Trans.RunMethod("getRevertReason", Null))
 	
-	tw.Logs = Trans.RunMethod("getLogs", Null)
+	tw.Logs = RetrieveLogs(Trans)
 	Dim numeric As JavaObject
 	numeric.InitializeStatic("org.web3j.utils.Numeric")
 	If Trans.RunMethod("getEffectiveGasPrice", Null) <> Null Then
@@ -295,6 +320,24 @@ Private Sub TransactionFromNative(Trans As JavaObject) As W3TransactionReceipt
 	End If
 	tw.TransactionType = NullToEmptyString(Trans.RunMethod("getType", Null))
 	Return tw
+End Sub
+
+Private Sub RetrieveLogs(Trans As JavaObject) As List
+	Dim logs As List = Trans.RunMethod("getLogs", Null)
+	Dim res As List
+	res.Initialize
+	If logs.IsInitialized = False Then Return res
+	For Each lg As JavaObject In logs
+		Dim wlg As W3Log
+		wlg.Initialize
+		wlg.Address = NullToEmptyString(lg.RunMethod("getAddress", Null))
+		wlg.Data = NullToEmptyString(lg.RunMethod("getData", Null))
+		wlg.Topics = lg.RunMethod("getTopics", Null)
+		wlg.LogIndex = mUtils.BigIntFromNative(lg.RunMethod("getLogIndex", Null))
+		wlg.Removed = lg.RunMethod("isRemoved", Null)
+		res.Add(wlg)
+	Next
+	Return res
 End Sub
 
 Private Sub NullToEmptyString (o As Object) As String

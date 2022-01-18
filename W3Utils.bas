@@ -78,6 +78,11 @@ Public Sub BigIntFromBytes (Key() As Byte) As BigInteger
 	Return Bi
 End Sub
 
+'Returns a BigInteger with the same value as the passed value. This is useful when you want to mutate the value without affecting other references.
+Public Sub BigIntFromBigInt (bi As BigInteger) As BigInteger
+	Return BigIntFromNative(BigIntToNative(bi))
+End Sub
+
 Public Sub BigIntFromBytes2 (Signum As Int, Magnitude() As Byte) As BigInteger
 	Dim n As JavaObject
 	n.InitializeNewInstance("java.math.BigInteger", Array(Signum, Magnitude))
@@ -252,6 +257,14 @@ Public Sub ExtractPublicKeysFromSignature(Message() As Byte, Signature() As Byte
 	Return res
 End Sub
 
+Public Sub DefaultBlockOrBigIntToDefaultBlock (BlockParameter As Object) As Object
+	If BlockParameter Is BigInteger Then
+		Dim jo As JavaObject
+		jo.InitializeNewInstance("org.web3j.protocol.core.DefaultBlockParameterNumber", Array(BigIntToNative(BlockParameter)))
+		Return jo
+	End If
+	Return BlockParameter
+End Sub
 
 
 'Converts an address with any case to checksum case.
@@ -267,6 +280,15 @@ End Sub
 
 Private Sub RunAsync(Target As Object, Method As String, Params() As Object) As Object
 	Return jme.RunMethod("runAsync", Array(Me, Target, Method, Params))
+End Sub
+
+'Creates a transaction has. Nonce is set to Null.
+Public Sub CreateTransactionHash (Hash As String) As W3TransactionHash
+	Dim t As W3TransactionHash
+	t.Initialize
+	t.Nonce = Null
+	t.Hash = Hash
+	Return t
 End Sub
 
 'internal
